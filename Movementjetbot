@@ -1,5 +1,32 @@
 from jetbot import jetbot
 import time
 
-autobot = Robot()
+fesba = Robot() # Scooter in arabic hahaha
+
+def move_forward(duration, spd):
+    fesba.forward(spd)
+    time.sleep(duration)
+    fesba.stop()
+
+def move_right(duration,spd):
+    fesba.right(spd)
+    time.sleep(duration)
+    fesba.stop()
+
+def move_left(duration,spd):
+    fesba.left(spd)
+    time.sleep(duration)
+    fesba.stop()
+
+duration = 0.5
+spd = 0.2
+
+move_forward(duration,spd)
+time.sleep(1)
+move_left(duration,spd)
+move_right(duration,spd)
+
+fesba.stop()
+
+
 
