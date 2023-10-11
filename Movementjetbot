@@ -18,6 +18,11 @@ def move_left(duration,spd):
     time.sleep(duration)
     fesba.stop()
 
+def move_backward(duration,spd):
+    fesba.backward(spd)
+    time.sleep(duration)
+    fesba.stop()
+
 duration = 0.5
 spd = 0.2
 
@@ -25,6 +30,7 @@ move_forward(duration,spd)
 time.sleep(1)
 move_left(duration,spd)
 move_right(duration,spd)
+move_backward(duration,spd)
 
 fesba.stop()
 
