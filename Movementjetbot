@@ -1,4 +1,4 @@
-from jetbot import jetbot
+from jetbot import Robot
 import time
 
 fesba = Robot() # Scooter in arabic hahaha
@@ -29,10 +29,9 @@ spd = 0.2
 move_forward(duration,spd)
 time.sleep(1)
 move_left(duration,spd)
+time.sleep(1)
 move_right(duration,spd)
+time.sleep(1)
 move_backward(duration,spd)
 
 fesba.stop()
-
-
-
