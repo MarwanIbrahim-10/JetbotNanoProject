@@ -1,6 +1,7 @@
 from jetbot import Robot
 import time
 import cv2
+import numpy as np
 
 #Jupiter widgets to display images
 from IPython.display import display
@@ -12,12 +13,6 @@ import openai
 import os
 import requests
 import json
-
-openai_key = "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"
-
-openai.api_key = openai_key
-
-# client = OpenAI()
 
 image_widget = widgets.Image(format='jpeg')
 
@@ -73,6 +68,16 @@ if not cap.isOpened():
     print("Cannot open camera")
     exit()
 
+#state management variables
+current_path = None  # The current path the robot is on
+last_intersection = None  # The last intersection type encountered
+
+def detect_intersection(thresholded_frame):
+    pass
+
+def decide_new_direction(current_path, intersection_type):  
+    pass
+
 while True:
     ret, frame = cap.read()
 
@@ -81,53 +86,37 @@ while True:
         print("Can't receive frame (stream end?). Exiting ...")
         break
 
-    #process the image here!
-    # Convert the frame to JPEG format
-    _, buffer = cv2.imencode('.jpg', frame)
+    #pass the by a filter to highlight the black and white parts of it, so we can see if the rectangular box exists
+    gray_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)  # Convert to grayscale
+    _, thresholded_frame = cv2.threshold(gray_frame, 100, 255, cv2.THRESH_BINARY_INV)  # Apply thresholding
 
-    # Encode the image as base64
-    base64_image = base64.b64encode(buffer).decode()
+    # Check for an intersection
+    intersection_type, intersection_center = detect_intersection(thresholded_frame)
+
+    if intersection_type is not None:
+        # If we have detected an intersection, decide the new direction based on the rules
+        new_direction = decide_new_direction(current_path, intersection_type)
+
+        # Act on the new direction
+        if new_direction == 'A':
+            # Assuming 'A' means keep going straight
+            move_forward(0.1, 0.3)
+        elif new_direction == 'B':
+            # Assuming 'B' means turn right
+            move_right(0.1, 0.3)
+        elif new_direction == 'C':
+            # Assuming 'C' means turn left
+            move_left(0.1, 0.3)
+        elif new_direction == 'D':
+            # Assuming 'D' means turn around or some other action
+            # Implement the necessary action
+            pass
+
+        # Update the current path and last intersection
+        current_path = new_direction
+        last_intersection = intersection_type
+
     
-    # Feed the image to the openai API
-#     headers = {
-#         "Content-Type": "application/json",
-#         "Authorization": f"Bearer {openai_key}"
-#     }
-
-#     payload = {
-#         "model": "gpt-4-vision-preview",
-#         "messages": [
-#           {
-#             "role": "user",
-#             "content": [
-#               {
-#                 "type": "text",
-#                 "text": "What’s in the main thing in this image? Respond with 1 word only"
-#               },
-#               {
-#                 "type": "image_url",
-#                 "image_url": {
-#                   "url": f"data:image/jpeg;base64,{base64_image}"
-#                 }
-#               }
-#             ]
-#           }
-#         ],
-#         "max_tokens": 4
-#     }
-
-#     response = requests.post("https://api.openai.com/v1/chat/completions", headers=headers, json=payload)
-    
-    # JSON data
-#     json_data = response.json()
-
-#     # Extracting the message content
-#     message_content = json_data['choices'][0]['message']['content']
-
-#     print(message_content)
-    
-
-    #make decisions on how the robot should move here
     
     image_widget.value = bgr8_to_jpeg(frame)
     
