@@ -9,8 +9,10 @@ import ipywidgets.widgets as widgets
 from jetbot import bgr8_to_jpeg
 
 image_widget = widgets.Image(format='jpeg')
+binary_image_widget = widgets.Image(format='jpeg')
+contour_image_widget = widgets.Image(format='jpeg')
 
-display(image_widget)
+display(image_widget, binary_image_widget, contour_image_widget)
 
 daddyana = Robot()
 
@@ -34,7 +36,7 @@ def move_backward(duration,spd):
     time.sleep(duration)
     daddyana.stop()
 
-def gstreamer_pipeline(capture_width=1280, capture_height=720, display_width=640, display_height=480, framerate=60, flip_method=0):
+def gstreamer_pipeline(capture_width=640, capture_height=480, display_width=320, display_height=240, framerate=30, flip_method=0):
     return (
         "nvarguscamerasrc ! "
         "video/x-raw(memory:NVMM), "
@@ -67,12 +69,30 @@ current_path = None  # The current path the robot is on
 last_intersection = None  # The last intersection type encountered
 
 def follow_line(frame, display_width):
-    #convert to grayscale
-    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-    #threshold the image to get the line in white
+    # Crop the frame to a narrower field of view, e.g., the central vertical strip
+    height, width, _ = frame.shape
+    crop_width = display_width  # set the desired crop width
+    left = (width - crop_width) // 2
+    right = (width + crop_width) // 2
+    cropped_frame = frame[:, left:right]
+
+    # Convert the cropped frame to grayscale
+    gray = cv2.cvtColor(cropped_frame, cv2.COLOR_BGR2GRAY)
+    # Threshold the image to get the line in white
     _, binary = cv2.threshold(gray, 100, 255, cv2.THRESH_BINARY_INV)
-    #find the contours of the line
+    
+    # Display binary image of the cropped area
+    binary_bgr = cv2.cvtColor(binary, cv2.COLOR_GRAY2BGR)
+    binary_image_widget.value = bgr8_to_jpeg(binary_bgr)
+
+    # Find the contours of the line in the cropped binary image
     contours, _ = cv2.findContours(binary, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    
+    # Create a BGR image for displaying the contours
+    contour_image = np.zeros_like(frame)
+    cv2.drawContours(contour_image, contours, -1, (0, 255, 0), 3)  # Draw contours in green
+    contour_image_widget.value = bgr8_to_jpeg(contour_image)  # Update the contour image widget
+    
     if contours:
         # Find the largest contour, assumed to be the line
         largest_contour = max(contours, key=cv2.contourArea)
@@ -141,7 +161,9 @@ while True:
         speed = 0.3  #base speed
         k_p = 0.01  #proportional gain, adjust as necessary
         turn_speed = k_p * deviation
-        daddyana.set_motors(speed + turn_speed, speed - turn_speed)
+        print("Turn speed is now: ", turn_speed)
+        #this shuts down the robot for some reason
+        # daddyana.set_motors(speed + turn_speed, speed - turn_speed)
         time.sleep(0.1)
     else:
         print("No line detected, stopping the robot.")
@@ -149,25 +171,30 @@ while True:
         daddyana.stop()
 
     #intersection detection logic
-    hsv_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
-    intersection_type = detect_intersection(hsv_frame)
-    if intersection_type:
-        print(f"Intersection detected: {intersection_type}")
-        new_direction = decide_new_direction(intersection_type)
-        print(f"New direction: {new_direction}")
-        # Implement the logic to handle the turn based on new_direction
-        if new_direction == 'A':
-            # Continue straight
-            move_forward(0.1, speed)  # Example duration and speed
-        elif new_direction == 'B':
-            # Turn right
-            move_right(0.1, speed)  # Example duration and speed
-        elif new_direction == 'C':
-            # Turn left
-            move_left(0.1, speed)  # Example duration and speed
-        # Add more actions as necessary
-    else:
-        print("No intersection detected.")
+    # print("Checking for intersections...")
+    # hsv_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
+    # intersection_type = detect_intersection(hsv_frame)
+    # if intersection_type != 'straight':
+    #     print(f"Intersection detected: {intersection_type}")
+    #     print("Deciding new direction...")
+    #     new_direction = decide_new_direction(intersection_type)
+    #     print(f"New direction: {new_direction}")
+    #     # Implement the logic to handle the turn based on new_direction
+    #     if new_direction == 'A':
+    #         print("Continuing straight")
+    #         # Continue straight
+    #         # move_forward(0.1, speed)
+    #     elif new_direction == 'B':
+    #         print("Moving right")
+    #         # Turn right
+    #         # move_right(0.1, speed)
+    #     elif new_direction == 'C':
+    #         print("Moving left")
+    #         # Turn left
+    #         # move_left(0.1, speed)
+    #     # Add more actions as necessary
+    # else:
+    #     print("No intersection detected.")
 
     #update the image widget
     image_widget.value = bgr8_to_jpeg(frame)
