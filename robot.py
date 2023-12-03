@@ -64,17 +64,13 @@ if not cap.isOpened():
     print("Cannot open camera")
     exit()
 
-#state management variables
-current_path = None  # The current path the robot is on
-last_intersection = None  # The last intersection type encountered
-
 def follow_line(frame, display_width):
     # Crop the frame to a narrower field of view, e.g., the central vertical strip
     height, width, _ = frame.shape
-    crop_width = display_width  # set the desired crop width
-    left = (width - crop_width) // 2
-    right = (width + crop_width) // 2
-    cropped_frame = frame[:, left:right]
+    crop_height = 100  # adjust this to control the height of the cropped area
+    top = height - crop_height
+    bottom = height
+    cropped_frame = frame[top:bottom, :]
 
     # Convert the cropped frame to grayscale
     gray = cv2.cvtColor(cropped_frame, cv2.COLOR_BGR2GRAY)
@@ -87,6 +83,9 @@ def follow_line(frame, display_width):
 
     # Find the contours of the line in the cropped binary image
     contours, _ = cv2.findContours(binary, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+    min_contour_area = 500  
+    contours = [contour for contour in contours if cv2.contourArea(contour) > min_contour_area]
     
     # Create a BGR image for displaying the contours
     contour_image = np.zeros_like(frame)
@@ -99,10 +98,12 @@ def follow_line(frame, display_width):
         # Calculate the moments of the largest contour
         M = cv2.moments(largest_contour)
         if M["m00"] != 0:
-            # Calculate the x-coordinate of the centroid
             cX = int(M["m10"] / M["m00"])
-            # Calculate the deviation from the center of the display width
-            deviation = cX - (display_width // 2)
+            cv2.circle(contour_image, (cX, height//2), 5, (255, 0, 0), -1)  # Draw blue circle
+            contour_image_widget.value = bgr8_to_jpeg(contour_image)
+            # Draw a circle at the centroid
+            cv2.circle(contour_image, (cX, height//2), 5, (255, 0, 0), -1)  # Blue circle
+
             return deviation
     return None  # No line detected
 
@@ -152,7 +153,7 @@ while True:
     print("Reading from camera...")
 
     #follow the line
-    #assumes display width is 640, will have to adjust that accordingly
+    #display width is 640
     deviation = follow_line(frame, 640)
     if deviation is not None:
         print(f"Line detected. Deviation: {deviation}")
@@ -161,9 +162,20 @@ while True:
         speed = 0.3  #base speed
         k_p = 0.01  #proportional gain, adjust as necessary
         turn_speed = k_p * deviation
-        print("Turn speed is now: ", turn_speed)
+        turn_threshold = 0.05  # adjust this threshold as needed
+        if turn_speed > turn_threshold:
+            print("Turning right")
+        elif turn_speed < -turn_threshold:
+            print("Turning left")
+        else:
+            print("Moving straight")
+        #Question: using the turn_speed can I log to the console which direction it should go for debugging purposes?
         #this shuts down the robot for some reason
-        # daddyana.set_motors(speed + turn_speed, speed - turn_speed)
+        left_speed = max(min(speed + turn_speed, 1), -1)
+        right_speed = max(min(speed - turn_speed, 1), -1)
+        print("Left speed is: " , left_speed)
+        print("Right speed is: ", right_speed)
+        # daddyana.set_motors(left_speed, right_speed)
         time.sleep(0.1)
     else:
         print("No line detected, stopping the robot.")
