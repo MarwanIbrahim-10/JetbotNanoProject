@@ -1,14 +1,21 @@
 from jetbot import Robot
 import cv2
 import numpy as np
-from IPython.display import display
+from IPython.display import display, Image
+import io
 import ipywidgets.widgets as widgets
 from jetbot import bgr8_to_jpeg
 import time
+import os
 
 # Create a button to stop the robot
 stop_button = widgets.Button(description='Stop')
 display(stop_button)
+
+screenshots_folder = "screenshots"
+if not os.path.exists(screenshots_folder):
+    os.makedirs(screenshots_folder)
+
 
 def stop_robot(b):
     global running
@@ -23,6 +30,10 @@ running = True
 
 # Flag to check if the intersection has been handled
 checked_intersection = False
+
+# Flag to delay the intersection delay logic
+last_intersection_time = None
+intersection_delay = 0.3  # Delay in seconds
 
 image_widget = widgets.Image(format='jpeg')
 binary_image_widget = widgets.Image(format='jpeg')
@@ -52,31 +63,49 @@ def gstreamer_pipeline(capture_width=240, capture_height=540, display_width=160,
         )
     )
 
-#ToDo: Function that draws red lines around the green color in the captured image
-def draw_red_lines_around_green(contour_frame):
-    print("I am inside the function that will draw the red lines")
-    # Convert BGR to HSV
-    hsv = cv2.cvtColor(contour_frame, cv2.COLOR_BGR2HSV)
+def draw_midpoints(frame):
+    print("I am inside the draw midpoints function")
+    # Convert the frame to RGB
+    rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
 
-    # Define range of green color in HSV
-    lower_green = np.array([36, 25, 25])
-    upper_green = np.array([70, 255, 255])
+    # Calculate the average of R, G, and B channels
+    average_frame = np.mean(rgb_frame, axis=2).astype(np.uint8)
 
-    # Threshold the HSV image to get only green colors
-    mask = cv2.inRange(hsv, lower_green, upper_green)
+    # Threshold values (adjust as needed)
+    threshold_value = 72
+    mid_threshold = 20
+    middle_gray_mask = np.logical_and(
+        average_frame >= threshold_value, average_frame < (threshold_value + mid_threshold)
+    )
 
-    # Find contours
-    contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    # Define cluster size thresholds
+    min_cluster_width = 13
+    min_cluster_height = 13
 
-    # Draw red lines around green contours
+    # Find midpoints for each color
+    middle_gray_midpoints = find_midpoints(middle_gray_mask, min_cluster_width, min_cluster_height)
+
+    # Draw midpoints for each color on the frame
+    draw_midpoints_on_frame(frame, middle_gray_midpoints, color=(0, 0, 255))  # Red for middle grey regions
+
+def find_midpoints(mask, min_width, min_height):
+    #here you can eliminate the areas that are not valid areas
+    contours, _ = cv2.findContours(mask.astype(np.uint8), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    midpoints = []
     for contour in contours:
-        if cv2.contourArea(contour) > 20:  # Adjust the minimum area if needed
-            cv2.drawContours(contour_frame, [contour], -1, (0, 0, 255), 2)
+        x, y, w, h = cv2.boundingRect(contour)
+        if w >= min_width and h >= min_height:
+            midpoint = (x + w//2, y + h//2)
+            midpoints.append(midpoint)
+    return midpoints
 
-    return contour_frame
+def draw_midpoints_on_frame(img, midpoints, color):
+    for point in midpoints:
+        cv2.circle(img, point, radius=3, color=color, thickness=-1)  # -1 thickness fills the circle
+
 
 def follow_line(frame, robot):
-    global checked_intersection
+    global checked_intersection, last_intersection_time
     # Make a copy of the frame to draw contours
     contour_frame = frame.copy()
 
@@ -84,7 +113,7 @@ def follow_line(frame, robot):
     gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
 
     # Apply thresholding
-    _, binary = cv2.threshold(gray, 57, 255, cv2.THRESH_BINARY_INV)
+    _, binary = cv2.threshold(gray, 55, 255, cv2.THRESH_BINARY_INV)
 
     # Morphological operations to close gaps and remove noise
     kernel = np.ones((5, 5), np.uint8)
@@ -125,36 +154,52 @@ def follow_line(frame, robot):
         # Move the robot based on the centroid's position
         if cx < center_x - 10:
             print("Move left")
-            # robot.left(0.1)
+            robot.left(0.1)
         elif cx > center_x + 10:
             print("Move right")
-            # robot.right(0.1)
+            robot.right(0.1)
         else:
             print("Move forward")
-            # robot.forward(0.15)
+            robot.forward(0.15)
 
         print("Line Width:", line_width)
-        if line_width > 40 and not checked_intersection:
-            print("I am going to the function that draws the red lines")
-            frame = draw_red_lines_around_green(contour_frame)
-            robot.stop()
-            time.sleep(3)
-            checked_intersection = True
-            print("Continue")
-        elif line_width > 40 and checked_intersection:
-            print("I am going to the function that draws the red lines")
-            frame = draw_red_lines_around_green(contour_frame)
-            print("Continue")
+        if line_width > 40:
+            current_time = time.time()
+            if last_intersection_time is None:
+                # First time the line width exceeds the threshold
+                last_intersection_time = current_time
+                print("Intersection detected, starting timer")
+
+            elapsed_time = current_time - last_intersection_time
+            if elapsed_time > intersection_delay:
+                if not checked_intersection:
+                    robot.stop()
+                    #Draw the midpoints here
+                    start_time = time.time()  # Start timing
+                    screenshot_filename = os.path.join(screenshots_folder, f"screenshot_{int(time.time())}.jpg")
+                    cv2.imwrite(screenshot_filename, frame)
+                    print(f"Screenshot saved as {screenshot_filename}")
+                    draw_midpoints(frame)  # Call the function to draw midpoints here
+                    end_time = time.time()  # End timing
+                    print(f"Time taken to draw midpoints: {end_time - start_time} seconds")
+                    time.sleep(3)
+                    checked_intersection = True
+                    last_intersection_time = None  # Reset the timer
+                    print("Continue after delay")
+                else:
+                    print("Continue")
+            else:
+                print(f"Waiting before stopping, elapsed time: {elapsed_time:.2f}")
         else:
+            last_intersection_time = None  # Reset the timer if the line width is below threshold
             checked_intersection = False
             print("Continue")
 
     else:
         print("No line detected")
-        # robot.forward(0.2)
+#         robot.forward(0.2)
 
     return frame, contour_frame
-
 
 try:
     cap = cv2.VideoCapture(gstreamer_pipeline(flip_method=0), cv2.CAP_GSTREAMER)
